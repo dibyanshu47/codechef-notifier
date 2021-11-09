@@ -60,8 +60,8 @@ const sendNotification = () => {
     chrome.notifications.create(`test${id++}`, {
         type: 'basic',
         iconUrl: './icon_128.png',
-        title: `Problem Code: ${problemCode}\nProblem Name: ${problemName}`,
-        message: `Verdict: ${result_code}\nTime: ${time}s`,
+        title: `Problem Code: ${problemCode}\nVerdict: ${result_code}`,
+        message: `Name: ${problemName}\nTime: ${time}s`,
         priority: 1
     });
 }
