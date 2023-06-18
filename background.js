@@ -1,68 +1,104 @@
-let submissionId = 0, token, result_code = "wait", time = 0.00, problemCode, problemName, id=1;
-chrome.webRequest.onBeforeSendHeaders.addListener((details) => {
-    fetchProblemCode();
-},
-    { urls: ["https://www.codechef.com/submit/complete/*"] }
-);
-chrome.webRequest.onBeforeSendHeaders.addListener((details) => {
-    if (submissionId === 0) {
-        submissionId = details.url.substring(47, 55);
-        token = details.requestHeaders[2].value;
-        fetchVerdict();
+var currentTab;
+var version = "1.0";
+let problemId;
+let response;
+
+
+
+chrome.tabs.onUpdated.addListener(async () => {
+  chrome.tabs.query(
+    //get current Tab
+    {
+      currentWindow: true,
+      active: true,
+    },
+    function (tabArray) {
+      currentTab = tabArray[0];
+      if (!currentTab.url.startsWith("chrome:")) {
+        chrome.debugger.attach(
+          {
+            //debug at current tab
+            tabId: currentTab.id,
+          },
+          version,
+          onAttach.bind(null, currentTab.id)
+        );
+      }
     }
-},
-    { urls: ["https://www.codechef.com/get_submission_status/*"] },
-    ['requestHeaders']
-);
+  );
+});
 
-const fetchProblemCode = () => {
-    chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-        console.log(tabs);
-        if (tabs.length === 0) {
-            problemCode = "UNKNOWN";
-            problemName = "Last Problem Submitted"
-        } else {
-            chrome.tabs.sendMessage(tabs[0].id, { message: "get-problem-details" }, function (response) {
-                console.log(response);
-                problemCode = response.problemCode;
-                problemName = response.problemName;
-            });
-        }
-    });
+function onAttach(tabId) {
+  chrome.debugger
+    .sendCommand(
+      {
+        //first enable the Network
+        tabId: tabId,
+      },
+      "Network.enable"
+    )
 }
+chrome.debugger.onEvent.addListener(allEventHandler);
 
-const fetchVerdict = () => {
+function allEventHandler(debuggeeId, message, params) {
+  if (currentTab.id != debuggeeId.tabId) {
+    return;
+  }
 
-    var myVar = setInterval(() => {
-        if (result_code === "wait") {
-            try {
-                axios.get(`https://www.codechef.com/get_submission_status/${submissionId}/`, {
-                    headers: {
-                        'x-csrf-token': token
-                    }
-                }).then((response) => {
-                    result_code = response.data.result_code;
-                    time = response.data.time;
-                })
-            } catch (error) {
-                console.log(error);
+  if (message == "Network.responseReceived") {
+    chrome.debugger.sendCommand(
+      {
+        tabId: debuggeeId.tabId,
+      },
+      "Network.getResponseBody",
+      {
+        requestId: params.requestId,
+      },
+      function (response) {
+        if (response?.body) {
+          try {
+            let res = JSON.parse(response.body);
+            response = res;
+
+            if (
+              res?.upid &&
+              (res?.result_code == "accepted" ||
+                res?.result_code == "compile" || res?.result_code === "wrong") &&
+              res?.time
+            ) {
+              chrome.tabs.sendMessage(currentTab.id, {
+                problemId: problemId,
+                resultCode:
+                  res?.result_code === "compile"
+                    ? "having compilation error"
+                    : res?.result_code,
+              });
             }
-        } else {
-            clearInterval(myVar);
-            sendNotification();
-            submissionId = 0;
-            result_code = "wait";
+          } catch (e) {}
         }
-    }, 1000);
+      }
+    );
+  }
 }
 
-const sendNotification = () => {
-    chrome.notifications.create(`test${id++}`, {
-        type: 'basic',
-        iconUrl: './icon_128.png',
-        title: `Problem Code: ${problemCode}\nVerdict: ${result_code}`,
-        message: `Name: ${problemName}\nTime: ${time}s`,
-        priority: 1
-    });
-}
+chrome.runtime.onMessage.addListener(function (message, sender) {
+  if (!message || typeof message !== "object" || !sender.tab) {
+    return;
+  }
 
+  switch (message.action) {
+    case "receiveBodyText": {
+      problemId = sender.tab.url.substring(sender.tab.url.lastIndexOf("/") + 1);
+      break;
+    }
+  }
+
+  if (message && message.type === "notification") {
+
+    let datum = {
+      ...message.options,
+    };
+
+    chrome.notifications.create("", datum);
+  }
+});

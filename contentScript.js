@@ -1,9 +1,26 @@
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-    if (message.message === "get-problem-details") {
-        let a = document.getElementById('breadcrumb').children;
-        const problemCode = a[0].children[2].href.substring(34);
-        const problemName = a[0].children[2].innerHTML;
-        console.log(problemCode, problemName);
-        sendResponse({problemCode, problemName});
-    }
+let btn;
+
+window.addEventListener(
+  "load",
+  function () {
+    btn = document.getElementById("submit_btn");
+    this.setTimeout(() => {
+      chrome.runtime.sendMessage({
+        action: "receiveBodyText",
+      });
+    }, 1000);
+  },
+  false
+);
+
+chrome.runtime.onMessage.addListener((message) => {
+  chrome.runtime.sendMessage("", {
+    type: "notification",
+    options: {
+      title: "Hello CodeChefer",
+      message: `Submission of problem ${message?.problemId} is ${message?.resultCode}`,
+      iconUrl: "./images/codechef_thumbnail.jpg",
+      type: "basic",
+    },
+  });
 });
